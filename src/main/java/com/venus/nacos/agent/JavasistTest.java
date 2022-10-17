@@ -8,8 +8,6 @@ public class JavasistTest {
         CtClass ctClass = classPool.get("com.venus.nacos.agent.Linwu");
 
         CtMethod insert = ctClass.getDeclaredMethod("insert");
-//        CtMethod insert = ctClass.getDeclaredMethod("insert");
-//
 //        CtClass[] paramTypes = {classPool.get(Void.class.getName())};
 //        CtMethod insert = ctClass.getDeclaredMethod("insert",paramTypes);
 //
