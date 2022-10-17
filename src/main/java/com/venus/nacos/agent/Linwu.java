@@ -14,5 +14,8 @@ public class Linwu {
         return result;
     }
 
+    public static void main(String[] args) {
+        VenusPremain.premain(null, null);
+    }
 
 }

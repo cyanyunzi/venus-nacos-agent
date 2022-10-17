@@ -6,7 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 
-public class AddressServerMemberLookupTransformer implements ClassFileTransformer {
+public class VenusTransformer implements ClassFileTransformer {
 
     @Override
     public byte[] transform(
@@ -72,10 +72,15 @@ public class AddressServerMemberLookupTransformer implements ClassFileTransforme
                 "            poolProperties.setDriverClassName(JDBC_DRIVER_NAME);\n" +
                 "            poolProperties.setJdbcUrl(url.get(index).toString().trim());\n" +
                 "            poolProperties.setUsername(com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(user, index, user.get(0)).toString().trim());\n" +
-                "            java.lang.String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0)).toString().trim();\n" +
-                "            java.lang.String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);\n" +
-                "            com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus.agent:password encryptPassword:{} decryptPassword:{}\",encryptPassword,decryptPassword);\n" +
-                "            poolProperties.setPassword(decryptPassword);\n" +
+                "            try {\n" +
+                "                String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0)).toString().trim();\n" +
+                "                String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);\n" +
+                "                com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus.agent:password encryptPassword:{} decryptPassword:{}\",encryptPassword,decryptPassword);\n" +
+                "                poolProperties.setPassword(decryptPassword);\n" +
+                "            } catch (Exception e) {\n" +
+                "                com.alibaba.nacos.core.utils.Loggers.CORE.error(\"venus.agent:decrypt.error msg:{} ex:{}\",e.getMessage(),e);\n" +
+                "            }\n" +
+                "            \n" +
                 "            com.zaxxer.hikari.HikariDataSource ds = poolProperties.getDataSource();\n" +
                 "            ds.setConnectionTestQuery(TEST_QUERY);\n" +
                 "            ds.setIdleTimeout(java.util.concurrent.TimeUnit.MINUTES.toMillis(10L));\n" +
@@ -105,10 +110,15 @@ public class AddressServerMemberLookupTransformer implements ClassFileTransforme
             poolProperties.setDriverClassName(JDBC_DRIVER_NAME);
             poolProperties.setJdbcUrl(url.get(index).toString().trim());
             poolProperties.setUsername(com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(user, index, user.get(0)).toString().trim());
-            java.lang.String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0)).toString().trim();
-            java.lang.String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);
-            com.alibaba.nacos.core.utils.Loggers.CORE.info("venus.agent:password encryptPassword:{} decryptPassword:{}",encryptPassword,decryptPassword);
-            poolProperties.setPassword(decryptPassword);
+            try {
+                String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0)).toString().trim();
+                String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);
+                com.alibaba.nacos.core.utils.Loggers.CORE.info("venus.agent:password encryptPassword:{} decryptPassword:{}",encryptPassword,decryptPassword);
+                poolProperties.setPassword(decryptPassword);
+            } catch (Exception e) {
+                com.alibaba.nacos.core.utils.Loggers.CORE.error("venus.agent:decrypt.error msg:{} ex:{}",e.getMessage(),e);
+            }
+
             com.zaxxer.hikari.HikariDataSource ds = poolProperties.getDataSource();
             ds.setConnectionTestQuery(TEST_QUERY);
             ds.setIdleTimeout(java.util.concurrent.TimeUnit.MINUTES.toMillis(10L));
