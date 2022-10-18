@@ -14,18 +14,17 @@ public class VenusTransformer implements ClassFileTransformer {
             String className,
             Class<?> classBeingRedefined,
             ProtectionDomain protectionDomain,
-            byte[] classfileBuffer){
+            byte[] classfileBuffer) {
         try {
             String AddressServerMemberLookup = "com/alibaba/nacos/core/cluster/lookup/AddressServerMemberLookup";
             String ExternalDataSourceProperties = "com/alibaba/nacos/config/server/service/datasource/ExternalDataSourceProperties";
 
-            ClassPool classPool = ClassPool.getDefault();
             if (AddressServerMemberLookup.equals(className)) {
-                return agentAddressServerMemberLookup(classPool,classfileBuffer).toBytecode();
+                return agentAddressServerMemberLookup(classfileBuffer).toBytecode();
             }
 
             if (ExternalDataSourceProperties.equals(className)) {
-                return agentExternalDataSourceProperties(classPool,classfileBuffer).toBytecode();
+                return agentExternalDataSourceProperties(classfileBuffer).toBytecode();
             }
 
             return classfileBuffer;
@@ -35,14 +34,20 @@ public class VenusTransformer implements ClassFileTransformer {
         }
     }
 
-    private CtClass agentAddressServerMemberLookup(ClassPool classPool,byte[] classfileBuffer) throws Exception {
+    private CtClass agentAddressServerMemberLookup(byte[] classfileBuffer) throws Exception {
+        ClassPool classPool = ClassPool.getDefault();
+        //取得当前线程的加载环境,避免代码找不到某些nacos启动环境的spring类等等
+        classPool.appendClassPath(new LoaderClassPath(Thread.currentThread().getContextClassLoader()));
+
         CtClass lookupCtClass = classPool.makeClass(new ByteArrayInputStream(classfileBuffer));
+        //扩展的spring properties配置协议前缀
         CtField address_http_protocol =
                 new CtField(classPool.get("java.lang.String"), "ADDRESS_HTTP_PROTOCOL",
                         lookupCtClass);
         address_http_protocol.setModifiers(Modifier.PUBLIC);
         lookupCtClass.addField(address_http_protocol, CtField.Initializer.constant("address.http.protocol"));
 
+        //code只要用于判定域名服务器返回码
         CtField http_200 =
                 new CtField(classPool.get("java.lang.String"), "HTTP_200",
                         lookupCtClass);
@@ -50,50 +55,39 @@ public class VenusTransformer implements ClassFileTransformer {
         lookupCtClass.addField(http_200, CtField.Initializer.constant("200"));
 
         updateInitAddressSysMethod(lookupCtClass);
+        //替换为Connection远程连接请求,nacos自身的rest请求修改过多类.
         addDoGetMethod(lookupCtClass);
         updateSyncFromAddressUrlMethod(lookupCtClass);
         return lookupCtClass;
     }
 
-    private CtClass agentExternalDataSourceProperties(ClassPool classPool,byte[] classfileBuffer) throws Exception {
+    private CtClass agentExternalDataSourceProperties(byte[] classfileBuffer) throws Exception {
+        ClassPool classPool = ClassPool.getDefault();
+        classPool.appendClassPath(new LoaderClassPath(Thread.currentThread().getContextClassLoader()));
         CtClass externalDataSourcePropertiesCtClass = classPool.makeClass(new ByteArrayInputStream(classfileBuffer));
-
         CtMethod ctMethod = externalDataSourcePropertiesCtClass.getDeclaredMethod("build");
-        ctMethod.setBody("{\n" +
-                "        java.util.List dataSources = new java.util.ArrayList();\n" +
-                "        org.springframework.boot.context.properties.bind.Binder.get($1).bind(\"db\", org.springframework.boot.context.properties.bind.Bindable.ofInstance(this));\n" +
-                "        com.alibaba.nacos.common.utils.Preconditions.checkArgument(java.util.Objects.nonNull(num), \"db.num is null\");\n" +
-                "        com.alibaba.nacos.common.utils.Preconditions.checkArgument(org.apache.commons.collections.CollectionUtils.isNotEmpty(user), \"db.user or db.user.[index] is null\");\n" +
-                "        com.alibaba.nacos.common.utils.Preconditions.checkArgument(org.apache.commons.collections.CollectionUtils.isNotEmpty(password), \"db.password or db.password.[index] is null\");\n" +
-                "        for (int index = 0; index < java.lang.Integer.parseInt(num.toString()); index++) {\n" +
-                "            int currentSize = index + 1;\n" +
-                "            com.alibaba.nacos.common.utils.Preconditions.checkArgument(url.size() >= currentSize, \"db.url.%s is null\", new Object[]{index});\n" +
-                "            com.alibaba.nacos.config.server.service.datasource.DataSourcePoolProperties poolProperties = com.alibaba.nacos.config.server.service.datasource.DataSourcePoolProperties.build($1);\n" +
-                "            poolProperties.setDriverClassName(JDBC_DRIVER_NAME);\n" +
-                "            poolProperties.setJdbcUrl(url.get(index).toString().trim());\n" +
-                "            poolProperties.setUsername(com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(user, index, user.get(0)).toString().trim());\n" +
-                "            try {\n" +
-                "                String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0)).toString().trim();\n" +
-                "                String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);\n" +
-                "                com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus.agent:password encryptPassword:{} decryptPassword:{}\",encryptPassword,decryptPassword);\n" +
-                "                poolProperties.setPassword(decryptPassword);\n" +
-                "            } catch (Exception e) {\n" +
-                "                com.alibaba.nacos.core.utils.Loggers.CORE.error(\"venus.agent:decrypt.error msg:{} ex:{}\",e.getMessage(),e);\n" +
-                "            }\n" +
-                "            \n" +
-                "            com.zaxxer.hikari.HikariDataSource ds = poolProperties.getDataSource();\n" +
-                "            ds.setConnectionTestQuery(TEST_QUERY);\n" +
-                "            ds.setIdleTimeout(java.util.concurrent.TimeUnit.MINUTES.toMillis(10L));\n" +
-                "            ds.setConnectionTimeout(java.util.concurrent.TimeUnit.SECONDS.toMillis(3L));\n" +
-                "            dataSources.add(ds);\n" +
-                "            $2.accept(ds);\n" +
-                "        }\n" +
-                "        com.alibaba.nacos.common.utils.Preconditions.checkArgument(org.apache.commons.collections.CollectionUtils.isNotEmpty(dataSources), \"no datasource available\");\n" +
-                "        return dataSources;\n" +
-                "    }");
+        //修改方法返回值,$_是返回值,dataSources修改密码为明文
+        ctMethod.insertAfter("java.util.Iterator var8 = $_.iterator();\n" +
+                "        while(var8.hasNext()) {\n" +
+                "            com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource)var8.next();\n" +
+                "            String encryptPassword = dataSource.getPassword();\n" +
+                "            String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);\n" +
+                "            dataSource.setPassword(decryptPassword);\n" +
+                "            com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus.agent:password encryptPassword:{} decryptPassword:{}\",encryptPassword,decryptPassword);\n" +
+                "        }");
         return externalDataSourcePropertiesCtClass;
     }
-
+    /*
+        java.util.Iterator var8 = dataSources.iterator();
+        while(var8.hasNext()) {
+            com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource)var8.next();
+            String encryptPassword = dataSource.getPassword();
+            String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);
+            dataSource.setPassword(decryptPassword);
+            com.alibaba.nacos.core.utils.Loggers.CORE.info("venus.agent:password encryptPassword:{} decryptPassword:{}",encryptPassword,decryptPassword);
+        }
+    *
+    * */
 
     /*
 
@@ -109,9 +103,9 @@ public class VenusTransformer implements ClassFileTransformer {
             com.alibaba.nacos.config.server.service.datasource.DataSourcePoolProperties poolProperties = com.alibaba.nacos.config.server.service.datasource.DataSourcePoolProperties.build($1);
             poolProperties.setDriverClassName(JDBC_DRIVER_NAME);
             poolProperties.setJdbcUrl(url.get(index).toString().trim());
-            poolProperties.setUsername(com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(user, index, user.get(0)).toString().trim());
+            poolProperties.setUsername(com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(user, index, user.get(0).toString()).toString().trim());
             try {
-                String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0)).toString().trim();
+                String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0).toString()).toString().trim();
                 String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);
                 com.alibaba.nacos.core.utils.Loggers.CORE.info("venus.agent:password encryptPassword:{} decryptPassword:{}",encryptPassword,decryptPassword);
                 poolProperties.setPassword(decryptPassword);
