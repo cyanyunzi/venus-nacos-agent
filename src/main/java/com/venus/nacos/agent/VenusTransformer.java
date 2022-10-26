@@ -71,23 +71,12 @@ public class VenusTransformer implements ClassFileTransformer {
                 "        while(var8.hasNext()) {\n" +
                 "            com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource)var8.next();\n" +
                 "            String encryptPassword = dataSource.getPassword();\n" +
-                "            String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);\n" +
+                "            String decryptPassword = com.venus.nacos.extend.VenusAesUtil.decrypt(encryptPassword);\n" +
                 "            dataSource.setPassword(decryptPassword);\n" +
                 "            com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus.agent:password encryptPassword:{} decryptPassword:{}\",encryptPassword,decryptPassword);\n" +
                 "        }");
         return externalDataSourcePropertiesCtClass;
     }
-    /*
-        java.util.Iterator var8 = dataSources.iterator();
-        while(var8.hasNext()) {
-            com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource)var8.next();
-            String encryptPassword = dataSource.getPassword();
-            String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);
-            dataSource.setPassword(decryptPassword);
-            com.alibaba.nacos.core.utils.Loggers.CORE.info("venus.agent:password encryptPassword:{} decryptPassword:{}",encryptPassword,decryptPassword);
-        }
-    *
-    * */
 
     /*
 
@@ -106,7 +95,7 @@ public class VenusTransformer implements ClassFileTransformer {
             poolProperties.setUsername(com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(user, index, user.get(0).toString()).toString().trim());
             try {
                 String encryptPassword = com.alibaba.nacos.common.utils.CollectionUtils.getOrDefault(password, index, password.get(0).toString()).toString().trim();
-                String decryptPassword = com.alibaba.nacos.core.cluster.venus.VenusAesUtil.decrypt(encryptPassword);
+                String decryptPassword = com.venus.nacos.extend.VenusAesUtil.decrypt(encryptPassword);
                 com.alibaba.nacos.core.utils.Loggers.CORE.info("venus.agent:password encryptPassword:{} decryptPassword:{}",encryptPassword,decryptPassword);
                 poolProperties.setPassword(decryptPassword);
             } catch (Exception e) {
@@ -147,8 +136,8 @@ public class VenusTransformer implements ClassFileTransformer {
                 "            connection = (java.net.HttpURLConnection) url.openConnection();\n" +
                 "            if(httpurl.contains(\"https://\")){\n" +
                 "                javax.net.ssl.HttpsURLConnection httpsConnection = (javax.net.ssl.HttpsURLConnection)connection;\n" +
-                "                com.alibaba.nacos.core.cluster.venus.VenusSSLSocketFactory.trustAllHosts(httpsConnection);\n" +
-                "                httpsConnection.setHostnameVerifier(new com.alibaba.nacos.core.cluster.venus.VenusHostnameVerifier());\n" +
+                "                com.venus.nacos.extend.VenusSSLSocketFactory.trustAllHosts(httpsConnection);\n" +
+                "                httpsConnection.setHostnameVerifier(new com.venus.nacos.extend.VenusHostnameVerifier());\n" +
                 "            }\n" +
                 "            connection.setRequestMethod(\"GET\");\n" +
                 "            connection.setConnectTimeout(15000);\n" +
@@ -161,7 +150,6 @@ public class VenusTransformer implements ClassFileTransformer {
                 "                String temp = null;\n" +
                 "                while ((temp = br.readLine()) != null) {\n" +
                 "                    sbf.append(temp);\n" +
-                "                    sbf.append(\"\\r\\n\");\n" +
                 "                }\n" +
                 "                map.put(\"result\", sbf.toString());\n" +
                 "            }\n" +
@@ -201,11 +189,15 @@ public class VenusTransformer implements ClassFileTransformer {
         ctMethod.setBody("{\n" +
                 "        java.util.Map result = doGet(addressServerUrl);\n" +
                 "com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus agent addressServerUrl:{},result:{}\" ,addressServerUrl,result);\n" +
-                "        if (result.get(\"code\")!=null&&HTTP_200.equals(result.get(\"code\"))) {\n" +
+                "        if (result.get(\"code\")!=null&&HTTP_200.equals(result.get(\"code\").toString())) {\n" +
                 "            isAddressServerHealth = true;\n" +
                 "            java.io.Reader reader = new java.io.StringReader(result.getOrDefault(\"result\",\"\").toString());\n" +
                 "            try {\n" +
-                "                afterLookup(com.alibaba.nacos.core.cluster.MemberUtil.readServerConf(com.alibaba.nacos.sys.env.EnvUtil.analyzeClusterConf(reader)));\n" +
+                "                java.util.List clusters =  com.alibaba.nacos.sys.env.EnvUtil.analyzeClusterConf(reader);\n"+
+                "com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus agent clusters:{}\" ,clusters);\n" +
+                "java.util.Collection members = com.alibaba.nacos.core.cluster.MemberUtil.readServerConf(clusters);\n"+
+                "com.alibaba.nacos.core.utils.Loggers.CORE.info(\"venus agent members:{}\" ,members);\n" +
+                "                afterLookup(members);\n" +
                 "            } catch (java.lang.Throwable e) {\n" +
                 "                com.alibaba.nacos.core.utils.Loggers.CLUSTER.error(\"[serverlist] exception for analyzeClusterConf, error : {}\",\n" +
                 "                        com.alibaba.nacos.common.utils.ExceptionUtil.getAllExceptionMsg(e));\n" +
@@ -233,8 +225,8 @@ public class VenusTransformer implements ClassFileTransformer {
             connection = (java.net.HttpURLConnection) url.openConnection();
             if(httpurl.contains("https://")){
                 javax.net.ssl.HttpsURLConnection httpsConnection = (javax.net.ssl.HttpsURLConnection)connection;
-                com.alibaba.nacos.core.cluster.venus.VenusSSLSocketFactory.trustAllHosts(httpsConnection);
-                httpsConnection.setHostnameVerifier(new com.alibaba.nacos.core.cluster.venus.VenusHostnameVerifier());
+                com.venus.nacos.extend.VenusSSLSocketFactory.trustAllHosts(httpsConnection);
+                httpsConnection.setHostnameVerifier(new com.venus.nacos.extend.VenusHostnameVerifier());
             }
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(15000);
