@@ -76,8 +76,8 @@ public class VenusTransformer implements ClassFileTransformer {
                 "            connection = (java.net.HttpURLConnection) url.openConnection();\n" +
                 "            if(httpurl.contains(\"https://\")){\n" +
                 "                javax.net.ssl.HttpsURLConnection httpsConnection = (javax.net.ssl.HttpsURLConnection)connection;\n" +
-                "                com.venus.nacos.agent.VenusSSLSocketFactory.trustAllHosts(httpsConnection);\n" +
-                "                httpsConnection.setHostnameVerifier(new com.venus.nacos.agent.VenusHostnameVerifier());\n" +
+                "                com.venus.nacos.extend.VenusSSLSocketFactory.trustAllHosts(httpsConnection);\n" +
+                "                httpsConnection.setHostnameVerifier(new com.venus.nacos.extend.VenusHostnameVerifier());\n" +
                 "            }\n" +
                 "            connection.setRequestMethod(\"GET\");\n" +
                 "            connection.setConnectTimeout(15000);\n" +
